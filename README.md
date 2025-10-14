@@ -31,7 +31,7 @@ GarbageClassification/
 ```bash
 python3 -m venv venv
 source venv/bin/activate   # macOS/Linux
-venv\Scripts\activate      # Windows
+venv\Scripts\activate      # Windows ```
 
 ## Install dependencies
 ``` bash pip install kagglehub numpy scikit-learn opencv-python matplotlib seaborn ```
