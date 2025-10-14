@@ -9,6 +9,7 @@ It automatically downloads, merges, cleans, and normalizes image data into **fiv
 
 ## 📂 Project structure
 
+```
 GarbageClassification/
 │
 ├── data/
@@ -21,7 +22,7 @@ GarbageClassification/
 │
 ├── main.py # Model training and evaluation script
 └── README.md
-
+```
 
 ---
 
@@ -29,17 +30,22 @@ GarbageClassification/
 
 ### 1. Create and activate a virtual environment
 
-```bash python3 -m venv venv
+```bash
+python3 -m venv venv
 source venv/bin/activate   # macOS/Linux
 venv\Scripts\activate      # Windows
 ```
 
 ## Install dependencies
-``` bash pip install kagglehub numpy scikit-learn opencv-python matplotlib seaborn ```
+```bash
+pip install kagglehub numpy scikit-learn opencv-python matplotlib seaborn
+```
 
 
 ## 📦 Build the dataset
-```bash python3 scripts/dataset_setup.py ```
+```bash
+python3 scripts/dataset_setup.py
+```
 
 This will:
 
@@ -55,7 +61,9 @@ This will:
 
 To remove all dataset files (both raw downloads and combined images):
 
-```bash python3 scripts/cleanup_datasets.py```
+```bash
+python3 scripts/dataset_remove.py
+```
 
 This safely deletes:
 
