@@ -19,6 +19,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import tensorflow as tf
 from tensorflow.keras import layers, models
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from sklearn.model_selection import StratifiedKFold
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from sklearn.metrics import roc_auc_score
 
 
 def kachel():
@@ -30,9 +34,9 @@ def kachel():
 DATASET_DIR = "data/combined"
 
 # Parameters
-IMG_SIZE = 10  # CNNs work better with larger input (e.g. 64x64)
+IMG_SIZE = 32  # CNNs work better with larger input (e.g. 64x64)
 BATCH_SIZE = 32
-EPOCHS = 30
+EPOCHS = 40
 
 # Lists for data and labels
 data = []
@@ -67,9 +71,8 @@ y_encoded = encoder.fit_transform(y)
 num_classes = len(np.unique(y_encoded))
 y_categorical = tf.keras.utils.to_categorical(y_encoded, num_classes)
 
-# Split into train/test (80/20)
-# -- replaced by stratified CV training --
-from sklearn.model_selection import StratifiedKFold
+
+
 
 # Split keeping labels for stratification
 X_train, X_test, y_train, y_test, y_train_labels, y_test_labels = train_test_split(
@@ -80,12 +83,14 @@ X_train, X_test, y_train, y_test, y_train_labels, y_test_labels = train_test_spl
 def build_model(input_shape=(IMG_SIZE, IMG_SIZE, 3), num_classes=num_classes):
     model = models.Sequential([
         layers.Input(shape=input_shape),
-        layers.Conv2D(32, (3, 3), activation='relu', padding='same'),
-        layers.MaxPooling2D((2, 2), padding='same'),
-        layers.Conv2D(64, (3, 3), activation='relu', padding='same'),
-        layers.Dropout(0.25),
+        layers.Conv2D(32, (3, 3), activation='relu'),
+        layers.MaxPooling2D((2, 2)),
+        layers.Conv2D(64, (3, 3), activation='relu'),
+        layers.MaxPooling2D((2, 2)),
+        layers.Conv2D(128, (3, 3), activation='relu'),
+        layers.Dropout(0.3),
         layers.Flatten(),
-        layers.Dense(64, activation='relu'),
+        layers.Dense(128, activation='relu'),
         layers.Dropout(0.5),
         layers.Dense(num_classes, activation='softmax')
     ])
@@ -94,7 +99,7 @@ def build_model(input_shape=(IMG_SIZE, IMG_SIZE, 3), num_classes=num_classes):
                   metrics=['accuracy'])
     return model
 
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+
 
 # Stratified K-Fold on the training set
 n_splits = 5
@@ -104,6 +109,20 @@ fold_accuracies = []
 best_val_acc = -1.0
 best_model = None
 best_history = None
+
+
+
+# Data augmentation generator
+datagen = ImageDataGenerator(
+    rotation_range=15,         # rotazioni casuali fino a ±15°
+    width_shift_range=0.1,     # spostamento orizzontale
+    height_shift_range=0.1,    # spostamento verticale
+    zoom_range=0.1,            # zoom casuale
+    horizontal_flip=True       # flip orizzontale
+)
+
+datagen.fit(X_train)
+
 
 print(f"Starting Stratified {n_splits}-Fold CV on training set ({len(X_train)} samples)")
 
@@ -117,14 +136,12 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X_train, y_train_labels), 
     ]
 
     history = model.fit(
-        X_train[train_idx], y_train[train_idx],
+        datagen.flow(X_train[train_idx], y_train[train_idx], batch_size=BATCH_SIZE),
         validation_data=(X_train[val_idx], y_train[val_idx]),
         epochs=EPOCHS,
-        batch_size=BATCH_SIZE,
         callbacks=callbacks,
         verbose=1
     )
-
     # Evaluate on this fold's validation set
     val_loss, val_acc = model.evaluate(X_train[val_idx], y_train[val_idx], verbose=0)
     print(f"Fold {fold} val_acc: {val_acc:.4f}  val_loss: {val_loss:.4f}")
@@ -168,6 +185,20 @@ if best_model is not None:
     plt.ylabel("Actual")
     plt.title("Confusion Matrix (best CV model)")
     plt.show()
+    
+    # Compute AUC (macro-average over all classes)
+    y_pred_proba = best_model.predict(X_test)
+    auc = roc_auc_score(y_test, y_pred_proba, multi_class='ovr')
+    print(f"AUC (macro-average): {auc:.4f}")
+
+    # Compute specificity per class
+    specificity = []
+    for i in range(len(encoder.classes_)):
+        tn = np.sum(np.delete(np.delete(cm, i, axis=0), i, axis=1))
+        fp = np.sum(cm[:, i]) - cm[i, i]
+        specificity.append(tn / (tn + fp))
+    print("\nSpecificity per class:", np.round(specificity, 4))
+    print("Mean specificity:", np.mean(specificity))
 
     # Plot training history of best fold
     if best_history is not None:
