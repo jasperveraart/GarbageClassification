@@ -1,12 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-Created on Mon Oct 13 18:28:57 2025
-
 @authors: Arbi Golemi, Jasper Veraart
 """
 
-# Computational Intelligence Project - CNN version
+# Computational Intelligence Project - CNN for Garbage Classification
 
 import os
 import cv2
@@ -25,24 +21,21 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from sklearn.metrics import roc_auc_score
 
 
-def kachel():
-    path = kagglehub.dataset_download("farzadnekouei/trash-type-image-dataset")
-    print(path)
 
 
-# Path to dataset
+#dataset path
 DATASET_DIR = "data/combined"
 
-# Parameters
-IMG_SIZE = 32  # CNNs work better with larger input (e.g. 64x64)
+#parameters
+IMG_SIZE = 32  
 BATCH_SIZE = 32
 EPOCHS = 40
 
-# Lists for data and labels
+#lists for data and labels
 data = []
 labels = []
 
-# Load all images
+#loading images
 for category in os.listdir(DATASET_DIR):
     category_path = os.path.join(DATASET_DIR, category)
     if not os.path.isdir(category_path):
@@ -56,30 +49,30 @@ for category in os.listdir(DATASET_DIR):
         data.append(img)
         labels.append(category)
 
-# Convert to numpy arrays
+#convert to numpy arrays
 X = np.array(data, dtype="float32") / 255.0  # normalize pixel values
 y = np.array(labels)
 
 print("Images uploaded:", len(X))
 print("Input dimensions:", X.shape)
 
-# Encode the labels as numbers
+#encode the labels as numbers
 encoder = LabelEncoder()
 y_encoded = encoder.fit_transform(y)
 
-# Convert to categorical (one-hot encoding)
+#convert to categorical (one-hot encoding)
 num_classes = len(np.unique(y_encoded))
 y_categorical = tf.keras.utils.to_categorical(y_encoded, num_classes)
 
 
 
 
-# Split keeping labels for stratification
+#split keeping labels for stratification
 X_train, X_test, y_train, y_test, y_train_labels, y_test_labels = train_test_split(
     X, y_categorical, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
 )
 
-# Model builder function (recreate fresh model for each fold)
+#model builder
 def build_model(input_shape=(IMG_SIZE, IMG_SIZE, 3), num_classes=num_classes):
     model = models.Sequential([
         layers.Input(shape=input_shape),
@@ -101,7 +94,7 @@ def build_model(input_shape=(IMG_SIZE, IMG_SIZE, 3), num_classes=num_classes):
 
 
 
-# Stratified K-Fold on the training set
+#stratified K-Fold on the training set
 n_splits = 5
 skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
 
@@ -112,13 +105,13 @@ best_history = None
 
 
 
-# Data augmentation generator
+#data augmentation
 datagen = ImageDataGenerator(
-    rotation_range=15,         # rotazioni casuali fino a ±15°
-    width_shift_range=0.1,     # spostamento orizzontale
-    height_shift_range=0.1,    # spostamento verticale
-    zoom_range=0.1,            # zoom casuale
-    horizontal_flip=True       # flip orizzontale
+    rotation_range=15,         
+    width_shift_range=0.1,     
+    height_shift_range=0.1,    
+    zoom_range=0.1,            
+    horizontal_flip=True       
 )
 
 datagen.fit(X_train)
@@ -130,11 +123,12 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X_train, y_train_labels), 
     print(f"\n--- Fold {fold}/{n_splits} ---")
     model = build_model()
 
+    #define callbacks for early stopping and learning rate reduction
     callbacks = [
         EarlyStopping(patience=7, restore_best_weights=True, verbose=1),
         ReduceLROnPlateau(factor=0.5, patience=3, verbose=1)
     ]
-
+    #train the model
     history = model.fit(
         datagen.flow(X_train[train_idx], y_train[train_idx], batch_size=BATCH_SIZE),
         validation_data=(X_train[val_idx], y_train[val_idx]),
@@ -142,35 +136,36 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X_train, y_train_labels), 
         callbacks=callbacks,
         verbose=1
     )
-    # Evaluate on this fold's validation set
+    
+    #evualuate fold accuracy and loss (needed for best model selection)
     val_loss, val_acc = model.evaluate(X_train[val_idx], y_train[val_idx], verbose=0)
     print(f"Fold {fold} val_acc: {val_acc:.4f}  val_loss: {val_loss:.4f}")
 
     fold_accuracies.append(val_acc)
 
-    # Keep best model by validation accuracy
+    #find best model based on accuracy
     if val_acc > best_val_acc:
         best_val_acc = val_acc
         best_model = model
         best_history = history
 
-# CV summary
+#CV summary
 fold_accuracies = np.array(fold_accuracies)
 print("\nCV accuracies per fold:", fold_accuracies)
 print("CV mean accuracy: {:.4f} ± {:.4f}".format(fold_accuracies.mean(), fold_accuracies.std()))
 
-# Save best model
+#save best model
 if best_model is not None:
     best_model.save("best_model_fold.h5")
     print("Best model saved to best_model_fold.h5 (best val acc: {:.4f})".format(best_val_acc))
 
-# Final evaluation on held-out test set using the best model
+#final evaluation on test set using the best model
 if best_model is not None:
     test_loss, test_acc = best_model.evaluate(X_test, y_test, verbose=0)
-    print(f"\n✅ Test accuracy (best CV model): {test_acc:.4f}")
+    print(f"\nTest accuracy (best CV model): {test_acc:.4f}")
     print(f"Test loss: {test_loss:.4f}")
 
-    # Predictions & reports
+    #predictions & reports
     y_pred = best_model.predict(X_test)
     y_pred_classes = np.argmax(y_pred, axis=1)
     y_true = np.argmax(y_test, axis=1)
@@ -178,6 +173,7 @@ if best_model is not None:
     print("\nClassification report:\n")
     print(classification_report(y_true, y_pred_classes, target_names=encoder.classes_))
 
+    #create confusion matrix
     cm = confusion_matrix(y_true, y_pred_classes)
     plt.figure(figsize=(8, 6))
     sns.heatmap(cm, annot=True, fmt='d', xticklabels=encoder.classes_, yticklabels=encoder.classes_, cmap="Blues")
@@ -186,12 +182,12 @@ if best_model is not None:
     plt.title("Confusion Matrix (best CV model)")
     plt.show()
     
-    # Compute AUC (macro-average over all classes)
+    #AUC (macro-average over all classes)
     y_pred_proba = best_model.predict(X_test)
     auc = roc_auc_score(y_test, y_pred_proba, multi_class='ovr')
     print(f"AUC (macro-average): {auc:.4f}")
 
-    # Compute specificity per class
+    #compute specificity for each class
     specificity = []
     for i in range(len(encoder.classes_)):
         tn = np.sum(np.delete(np.delete(cm, i, axis=0), i, axis=1))
@@ -200,7 +196,7 @@ if best_model is not None:
     print("\nSpecificity per class:", np.round(specificity, 4))
     print("Mean specificity:", np.mean(specificity))
 
-    # Plot training history of best fold
+    #plot training history of best fold (accuracy and loss)
     if best_history is not None:
         plt.figure(figsize=(10, 4))
         plt.subplot(1, 2, 1)
